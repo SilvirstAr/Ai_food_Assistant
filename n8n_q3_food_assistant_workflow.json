@@ -1,0 +1,75 @@
+{
+  "name": "Q3 Food Assistant - Read Final Top3 from Google Sheets",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://docs.google.com/spreadsheets/d/14RhEClkrsKdN_Ko45am6PHDZ-aDfVTYZlxuEgR3mi3w/gviz/tq?tqx=out:csv&sheet=Final_Top3",
+        "responseFormat": "string",
+        "options": {}
+      },
+      "id": "read-final-top3-csv",
+      "name": "Read Final_Top3 CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.data || $input.first().json.body || $input.first().json.response || '';\n\nfunction parseCsv(text) {\n  const rows = [];\n  let row = [];\n  let field = '';\n  let inQuotes = false;\n  for (let i = 0; i < text.length; i++) {\n    const char = text[i];\n    const next = text[i + 1];\n    if (char === '\"') {\n      if (inQuotes && next === '\"') {\n        field += '\"';\n        i++;\n      } else {\n        inQuotes = !inQuotes;\n      }\n    } else if (char === ',' && !inQuotes) {\n      row.push(field);\n      field = '';\n    } else if ((char === '\\n' || char === '\\r') && !inQuotes) {\n      if (char === '\\r' && next === '\\n') i++;\n      row.push(field);\n      if (row.some((value) => value !== '')) rows.push(row);\n      row = [];\n      field = '';\n    } else {\n      field += char;\n    }\n  }\n  if (field || row.length) {\n    row.push(field);\n    rows.push(row);\n  }\n  return rows;\n}\n\nconst parsed = parseCsv(raw);\nif (parsed.length < 2) {\n  return [{ json: { status: 'ERROR', message: 'No CSV data returned. Check Google Sheets sharing: Anyone with link should be Viewer.' } }];\n}\n\nconst headers = parsed[0];\nconst records = parsed.slice(1).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] || ''])));\nconst areas = [...new Set(records.map((record) => record.Area).filter(Boolean))];\n\nconst summary = areas.map((area) => {\n  const areaRows = records.filter((record) => record.Area === area);\n  const top = areaRows.find((record) => Number(record.Rank) === 1) || areaRows[0];\n  return {\n    area,\n    topRestaurant: top['Restaurant Name'],\n    googleRating: top['Google Rating'],\n    wongnaiRating: top['Wongnai Rating'],\n    evidenceStatus: top['Evidence Status'],\n    recommendationCount: areaRows.length,\n  };\n});\n\nreturn [{\n  json: {\n    status: 'OK',\n    workflowPurpose: 'Automation evidence for Q3 AI Food Assistant',\n    totalRestaurantsRead: records.length,\n    areasCovered: areas.length,\n    summary,\n    note: 'This workflow reads Final_Top3 from Google Sheets and automatically summarizes the best restaurant per area.'\n  }\n}];"
+      },
+      "id": "summarize-recommendations",
+      "name": "Summarize Recommendations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Final_Top3 CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Final_Top3 CSV": {
+      "main": [
+        [
+          {
+            "node": "Summarize Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "versionId": "q3-food-assistant-template",
+  "triggerCount": 0,
+  "tags": []
+}
